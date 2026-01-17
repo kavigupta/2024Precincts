@@ -269,6 +269,198 @@ def _load_vermont(gdf):
     return result
 
 
+def _load_michigan(gdf, state_path):
+    """
+    Michigan-specific loader.
+    Michigan has CSV in long format that needs to be pivoted and merged with shapefile.
+    """
+    # Michigan county FIPS to name mapping
+    MI_COUNTY_FIPS = {
+        "001": "Alcona",
+        "003": "Alger",
+        "005": "Allegan",
+        "007": "Alpena",
+        "009": "Antrim",
+        "011": "Arenac",
+        "013": "Baraga",
+        "015": "Barry",
+        "017": "Bay",
+        "019": "Benzie",
+        "021": "Berrien",
+        "023": "Branch",
+        "025": "Calhoun",
+        "027": "Cass",
+        "029": "Charlevoix",
+        "031": "Cheboygan",
+        "033": "Chippewa",
+        "035": "Clare",
+        "037": "Clinton",
+        "039": "Crawford",
+        "041": "Delta",
+        "043": "Dickinson",
+        "045": "Eaton",
+        "047": "Emmet",
+        "049": "Genesee",
+        "051": "Gladwin",
+        "053": "Gogebic",
+        "055": "Grand Traverse",
+        "057": "Gratiot",
+        "059": "Hillsdale",
+        "061": "Houghton",
+        "063": "Huron",
+        "065": "Ingham",
+        "067": "Ionia",
+        "069": "Iosco",
+        "071": "Iron",
+        "073": "Isabella",
+        "075": "Jackson",
+        "077": "Kalamazoo",
+        "079": "Kalkaska",
+        "081": "Kent",
+        "083": "Keweenaw",
+        "085": "Lake",
+        "087": "Lapeer",
+        "089": "Leelanau",
+        "091": "Lenawee",
+        "093": "Livingston",
+        "095": "Luce",
+        "097": "Mackinac",
+        "099": "Macomb",
+        "101": "Manistee",
+        "103": "Marquette",
+        "105": "Mason",
+        "107": "Mecosta",
+        "109": "Menominee",
+        "111": "Midland",
+        "113": "Missaukee",
+        "115": "Monroe",
+        "117": "Montcalm",
+        "119": "Montmorency",
+        "121": "Muskegon",
+        "123": "Newaygo",
+        "125": "Oakland",
+        "127": "Oceana",
+        "129": "Ogemaw",
+        "131": "Ontonagon",
+        "133": "Osceola",
+        "135": "Oscoda",
+        "137": "Otsego",
+        "139": "Ottawa",
+        "141": "Presque Isle",
+        "143": "Roscommon",
+        "145": "Saginaw",
+        "147": "St. Clair",
+        "149": "St. Joseph",
+        "151": "Sanilac",
+        "153": "Schoolcraft",
+        "155": "Shiawassee",
+        "157": "Tuscola",
+        "159": "Van Buren",
+        "161": "Washtenaw",
+        "163": "Wayne",
+        "165": "Wexford",
+    }
+
+    csv_files = list(state_path.glob("*.csv"))
+    if not csv_files:
+        raise ValueError(f"Michigan CSV file not found in {state_path}")
+
+    # Load and process CSV
+    df = pd.read_csv(csv_files[0], low_memory=False)
+    pres_df = df[df["office"] == "President"].copy()
+
+    # Convert votes to numeric (handle comma-separated numbers)
+    pres_df["votes"] = (
+        pres_df["votes"].astype(str).str.replace(",", "").replace("", "0")
+    )
+    pres_df["votes"] = pd.to_numeric(pres_df["votes"], errors="coerce").fillna(0)
+
+    # Normalize party column - map variations to DEM/REP/OTH
+    pres_df["party_norm"] = pres_df["party"].str.upper()
+    # Map party variations
+    pres_df.loc[pres_df["party_norm"].isin(["DEM", "DEMOCRAT"]), "party_norm"] = "DEM"
+    pres_df.loc[pres_df["party_norm"].isin(["REP", "REPUBLICAN"]), "party_norm"] = "REP"
+    # Also check candidate names for party identification
+    pres_df.loc[
+        pres_df["candidate"].str.contains("Harris", case=False, na=False), "party_norm"
+    ] = "DEM"
+    pres_df.loc[
+        pres_df["candidate"].str.contains("Trump", case=False, na=False), "party_norm"
+    ] = "REP"
+    # Everything else is OTH
+    pres_df.loc[~pres_df["party_norm"].isin(["DEM", "REP"]), "party_norm"] = "OTH"
+
+    # Pivot table: index (county, precinct), columns party, values votes
+    pivot_df = pres_df.pivot_table(
+        index=["county", "precinct"],
+        columns="party_norm",
+        values="votes",
+        aggfunc="sum",
+        fill_value=0,
+    )
+
+    # Flatten column names and create result dataframe
+    result_df = pivot_df.reset_index()
+    result_df.columns.name = None  # Remove the columns name
+
+    # Rename columns to match expected format (these columns will always exist after pivot)
+    result_df["PresDem"] = result_df["DEM"]
+    result_df["PresRep"] = result_df["REP"]
+    result_df["PresOth"] = result_df["OTH"]
+
+    # Calculate total
+    result_df["PresTot"] = (
+        result_df["PresDem"] + result_df["PresRep"] + result_df["PresOth"]
+    )
+
+    # Keep only needed columns
+    result_df = result_df[["county", "precinct", "PresDem", "PresRep", "PresTot"]]
+
+    # Extract precinct number from CSV precinct names
+    # Handles patterns like "Precinct 1" or "CB 1" (Counting Board)
+    import re
+
+    def extract_precinct_num(name):
+        # Try "Precinct X" pattern first
+        match = re.search(r"Precinct\s+(\d+)", str(name), re.IGNORECASE)
+        if match:
+            return match.group(1).zfill(3)  # Pad to 3 digits like shapefile
+        # Try "CB X" pattern (Detroit uses Counting Boards)
+        match = re.search(r"CB\s+(\d+)", str(name), re.IGNORECASE)
+        if match:
+            return match.group(1).zfill(3)
+        return None
+
+    result_df["precinct_num"] = result_df["precinct"].apply(extract_precinct_num)
+    # Filter out rows where we couldn't extract precinct number
+    result_df = result_df[result_df["precinct_num"].notna()]
+
+    # Map COUNTYFIPS to county name in shapefile
+    gdf["county_name"] = gdf["COUNTYFIPS"].astype(str).map(MI_COUNTY_FIPS)
+
+    # Merge with shapefile on county name and precinct number
+    gdf["PRECINCT_str"] = (
+        gdf["PRECINCT"].astype(str).str.zfill(3)
+    )  # Ensure 3-digit format
+
+    merged = gdf.merge(
+        result_df,
+        left_on=["county_name", "PRECINCT_str"],
+        right_on=["county", "precinct_num"],
+        how="left",
+        suffixes=("", "_csv"),
+    )
+
+    # Filter out rows that don't have election data (user wants to error on invalid data, not fill with 0s)
+    merged = merged[
+        merged["PresDem"].notna()
+        & merged["PresRep"].notna()
+        & merged["PresTot"].notna()
+    ]
+
+    return merged
+
+
 def merge_new_hampshire(gdf, df):
     """
     Merge New Hampshire shapefile with CSV data.
@@ -369,7 +561,7 @@ STATE_COLUMNS = {
         "rep": "PresRep",
         "oth": None,
         "total": "PresTot",
-    },  # Data not available per README
+    },
     "Minnesota": {
         "dem": "MNPrecinct",
         "rep": "MNPrecin_1",
@@ -481,7 +673,7 @@ def load_state_presidential(state_dir, state_name):
     Parameters:
     -----------
     state_dir : str or Path
-        Path to the state directory
+        Path to the state directory (will check additional_data/ first if available)
     state_name : str
         Name of the state
 
@@ -490,12 +682,28 @@ def load_state_presidential(state_dir, state_name):
     gpd.GeoDataFrame with columns: STATE, STATE_ABBR, dem, rep, oth, geometry
     Returns None if loading fails.
     """
-    state_path = Path(state_dir)
+    # Check additional_data/ first, then fall back to provided state_dir
+    project_root = (
+        Path(state_dir).parent.parent
+        if Path(state_dir).parent.name == "states"
+        else Path(state_dir).parent
+    )
+    additional_data_path = project_root / "additional_data" / state_name
+
+    if additional_data_path.exists() and additional_data_path.is_dir():
+        state_path = additional_data_path
+    else:
+        state_path = Path(state_dir)
 
     # Find zip files in the state directory
     zip_files = list(state_path.glob("*.zip"))
     if not zip_files:
-        return None
+        # If no zip in additional_data, fall back to original state_dir
+        if state_path == additional_data_path:
+            state_path = Path(state_dir)
+            zip_files = list(state_path.glob("*.zip"))
+        if not zip_files:
+            return None
 
     # Use the first zip file found
     zip_path = zip_files[0]
@@ -529,6 +737,10 @@ def load_state_presidential(state_dir, state_name):
 
                 if state_name == "New Hampshire":
                     gdf = merge_new_hampshire(gdf, df)
+                    merged = True
+
+                if state_name == "Michigan":
+                    gdf = _load_michigan(gdf, state_path)
                     merged = True
 
                 if not merged:
