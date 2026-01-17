@@ -14,5 +14,9 @@ This data is freely available for anyone to use. If you do use data from this re
 Some data in this repository is either pulled directly from or uses the work of the [Redistricting Data Hub](https://redistrictingdatahub.org/). For the states that use this data, please refer to their [Terms and Conditions](https://redistrictingdatahub.org/terms-and-conditions/) and act accordingly. 
 
 
+# Additional Data Sources
+
+Some additional data sources that complement the main state-level data are available in the `additional_data/` directory. See [additional_data/README.md](additional_data/README.md) for details.
+
 # Disclaimer
 I can make no guarantees to the accuracy of this data. While I have taken care to ensure the data reflects the true results, it may contain minor errors or omissions due to variations in reporting or processing. Please verify independently before use. I am not liable for any issues arising from the use of this data.
