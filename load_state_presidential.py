@@ -3,12 +3,15 @@
 Function to load a state's presidential results and standardize to dem/rep/oth columns.
 """
 
+import os
 import gzip
 import zipfile
 import tempfile
 import geopandas as gpd
 import pandas as pd
 from pathlib import Path
+
+from columns import STATE_COLUMNS
 
 
 def find_shapefile_in_zip(zip_path, temp_dir):
@@ -72,7 +75,7 @@ def _validate_result(result, state_name=None):
 
 
 def _load_from_columns(
-    gdf, dem_col, rep_col, oth_col=None, total_col=None, state_name=None
+    gdf, dem_col, rep_col, oth_col=None, total_col=None, *, state_name
 ):
     """
     Common case: Extract presidential votes from explicitly named columns.
@@ -90,7 +93,7 @@ def _load_from_columns(
         If None, total_col must be provided to calculate oth = total - dem - rep
     total_col : str, optional
         Column name for Total votes (required if oth_col is None)
-    state_name : str, optional
+    state_name : str
         State name for error messages
 
     Returns:
@@ -101,6 +104,7 @@ def _load_from_columns(
     --------
     ValueError: If columns are missing, contain NaN, or contain invalid data
     """
+    assert state_name is not None
     # Validate that we have either oth_col or total_col
     if oth_col is None and total_col is None:
         raise ValueError(
@@ -136,10 +140,6 @@ def _load_from_columns(
 
     # Create result GeoDataFrame
     result = gpd.GeoDataFrame()
-    result["STATE"] = state_name if state_name else "Unknown"
-    result["STATE_ABBR"] = (
-        state_name[:2].upper() if state_name and len(state_name) >= 2 else "UN"
-    )
     result["geometry"] = gdf.geometry
     result.crs = gdf.crs
 
@@ -183,205 +183,6 @@ def merge_new_hampshire(gdf, df):
     assert size - 1 == len(gdf), "Dissolve should have reduced the number of rows by 1"
     df["ident"] = df["County"] + "::" + df["Precinct"]
     return gdf.merge(df, on="ident", how="left")
-
-
-# State-specific column mappings for common case
-# Format: {'dem': col, 'rep': col, 'oth': col or list or None, 'total': col or None}
-# If oth is None, total must be provided to calculate oth = total - dem - rep
-# If oth is a list, all columns will be summed
-STATE_COLUMNS = {
-    "Alabama": {
-        "dem": "G24PREDHAR",
-        "rep": "G24PRERTRU",
-        "oth": ["G24PREIKEN", "G24PREIOLI", "G24PREISTE", "G24PREOWRI"],
-        "total": None,
-    },
-    "Alaska": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Arizona": {"dem": "Harris", "rep": "Trump", "oth": None, "total": "PresTot"},
-    "Arkansas": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "California": {"dem": "G24PDem", "rep": "G24PRep", "oth": "G24POth", "total": None},
-    "Colorado": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Connecticut": {
-        "dem": "PresDem",
-        "rep": "PresRep",
-        "oth": None,
-        "total": "PresTot",
-    },
-    "Delaware": {"dem": "DE24Data_K", "rep": "DE24Data_D", "oth": None, "total": "DE24Data_G"},
-    "District of Columbia": {
-        "dem": "DC24Data_D",
-        "rep": "DC24Data_R",
-        "oth": None,
-        "total": "DC24Data_T",
-    },
-    "Florida": {
-        "dem": "Florida__2",
-        "rep": "Florida__1",
-        "oth": None,
-        "total": "Florida__9",
-    },
-    "Georgia": {
-        "dem": "G24PREDHAR",
-        "rep": "G24PRERTRU",
-        "oth": ["G24PREGSTE", "G24PREICRU", "G24PREIWES", "G24PRELOLI"],
-        "total": None,
-    },
-    "Hawaii": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Idaho": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Illinois": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Indiana": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Iowa": {
-        "dem": "votes_dem",
-        "rep": "votes_rep",
-        "oth": None,
-        "total": "votes_tota",
-    },
-    "Kansas": {"dem": "DHarris", "rep": "RTrump", "oth": "Other", "total": None},
-    "Kentucky": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Louisiana": {
-        "dem": "G24PREDHAR",
-        "rep": "G24PRERTRU",
-        "oth": [
-            "G24PRELOLI",
-            "G24PREOCRU",
-            "G24PREOFRU",
-            "G24PREOKEN",
-            "G24PREOPRE",
-            "G24PREOSON",
-            "G24PREOSTE",
-            "G24PREOTER",
-            "G24PREOWES",
-        ],
-        "total": None,
-    },
-    "Maine": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Maryland": {
-        "dem": "G24PRESD",
-        "rep": "G24PRESR",
-        "oth": "G24PRESO",
-        "total": None,
-    },
-    "Massachusetts": {
-        "dem": "PresDem",
-        "rep": "PresRep",
-        "oth": None,
-        "total": "PresTot",
-    },
-    "Michigan": {
-        "dem": "votes_dem",
-        "rep": "votes_rep",
-        "oth": None,
-        "total": "votes_total",
-    },
-    "Minnesota": {
-        "dem": "MNPrecinct",
-        "rep": "MNPrecin_1",
-        "oth": None,
-        "total": "MNPrecin_2",
-    },
-    "Mississippi": {
-        "dem": "PresDem",
-        "rep": "PresRep",
-        "oth": None,
-        "total": "PresTot",
-    },
-    "Missouri": {
-        "dem": "HARRIS - D",
-        "rep": "TRUMP - RE",
-        "oth": None,
-        "total": "PRESTOT",
-    },
-    "Montana": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Nebraska": {"dem": "PresDem", "rep": "PresRep", "oth": "PresOth", "total": None},
-    "Nevada": {
-        "dem": "NVData24_1",
-        "rep": "NVData24_2",
-        "oth": None,
-        "total": "NVData24_3",
-    },
-    "New Hampshire": {
-        "dem": "PresDem",
-        "rep": "PresRep",
-        "oth": None,
-        "total": "PresTot",
-    },
-    "New Jersey": {"dem": "Harris", "rep": "Trump", "oth": "Other", "total": None},
-    "New Mexico": {
-        "dem": "NMData24_1",
-        "rep": "NMData24_2",
-        "oth": None,
-        "total": "NMData24_3",
-    },
-    "New York": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "North Carolina": {
-        "dem": "PRESDEM",
-        "rep": "PRESREP",
-        "oth": None,
-        "total": "PRESTOTAL",
-    },
-    "North Dakota": {
-        "dem": "PresDem",
-        "rep": "PresRep",
-        "oth": None,
-        "total": "PresTot",
-    },
-    "Oklahoma": {"dem": "OK24Data_H", "rep": "OK24Data_T", "oth": None, "total": "OK24Data_G"},
-    "Ohio": {
-        "dem": "PresDem",
-        "rep": "PresRep",
-        "oth": None,
-        "total": "PresTot",
-    },  # Has NaN - will error correctly
-    "Oregon": {"dem": "USP24D", "rep": "USP24R", "oth": None, "total": "USP24Tot"},
-    "Pennsylvania": {
-        "dem": "votes_dem",
-        "rep": "votes_rep",
-        "oth": None,
-        "total": "votes_total",
-    },
-    "Rhode Island": {
-        "dem": "PresDem",
-        "rep": "PresRep",
-        "oth": None,
-        "total": "PresTot",
-    },
-    "South Carolina": {"dem": "Harris", "rep": "Trump", "oth": None, "total": "Total"},
-    "South Dakota": {
-        "dem": "G24PRESD",
-        "rep": "G24PRESR",
-        "oth": None,
-        "total": "G24PRESTOT",
-    },
-    "Tennessee": {
-        "dem": "votes_dem",
-        "rep": "votes_rep",
-        "oth": None,
-        "total": "votes_tota",
-    },
-    "Texas": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Utah": {"dem": "Harris", "rep": "Trump", "oth": None, "total": "Total"},
-    "Vermont": {"dem": "VTData24_K", "rep": "VTData24_D", "oth": None, "total": "VTData24_T"},
-    "Virginia": {
-        "dem": "G24PRESD",
-        "rep": "G24PRESR",
-        "oth": "G24PRESO",
-        "total": None,
-    },
-    "Washington": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "West Virginia": {
-        "dem": "PresDem",
-        "rep": "PresRep",
-        "oth": None,
-        "total": "PresTot",
-    },
-    "Wisconsin": {
-        "dem": "votes_dem",
-        "rep": "votes_rep",
-        "oth": None,
-        "total": "votes_tota",
-    },
-    "Wyoming": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-}
 
 
 def load_gdf(state_name, state_path):
@@ -500,7 +301,7 @@ def load_state_presidential(state_dir, state_name):
     return result
 
 
-def test_all_states(project_root):
+def load_all_states(project_root):
     """Test loading all states and report which ones work."""
     states_dir = Path(project_root) / "states"
 
@@ -512,7 +313,7 @@ def test_all_states(project_root):
 
     print(f"Testing {len(state_dirs)} states...\n")
 
-    successful = []
+    successful = {}
     failed = {}
 
     for state_dir in state_dirs:
@@ -526,16 +327,11 @@ def test_all_states(project_root):
             failed[state_name] = e
             continue
 
-        if gdf is not None and len(gdf) > 0:
-            # Check that we have dem or rep data
-            if gdf["dem"].sum() > 0 or gdf["rep"].sum() > 0:
-                print(
-                    f"✓ Success ({len(gdf)} features, dem={gdf['dem'].sum():.0f}, rep={gdf['rep'].sum():.0f})"
-                )
-                successful.append(state_name)
-            else:
-                print(f"✗ No vote data found")
-                failed.append(state_name)
+        if gdf is not None:
+            print(
+                f"✓ Success ({len(gdf)} features, dem={gdf['dem'].sum():.0f}, rep={gdf['rep'].sum():.0f})"
+            )
+            successful[state_name] = gdf
         else:
             print(f"✗ Failed to load")
             failed.append(state_name)
@@ -558,9 +354,21 @@ def test_all_states(project_root):
 
     return successful, failed
 
+def merge_shapefiles(project_root):
+    successful, failed = load_all_states(project_root)
+    assert not failed, "Failed to load some states"
+    frames = []
+    for state_name, gdf in successful.items():
+        gdf["state_name"] = state_name
+        gdf = gdf.to_crs(4326)
+        gdf = gdf.reset_index(drop=True)
+        gdf["precinct_no"] = gdf.index
+        frames.append(gdf)
+    gdf = pd.concat(frames)
+    return gdf
 
 if __name__ == "__main__":
-    import sys
-
     project_root = Path(__file__).parent
-    test_all_states(project_root)
+    gdf = merge_shapefiles(project_root)
+    os.makedirs("output", exist_ok=True)
+    gdf.to_file("output/all.shp", driver="ESRI Shapefile")
