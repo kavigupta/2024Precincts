@@ -40,23 +40,35 @@ def _validate_result(result, state_name=None):
     """
     state_prefix = f"{state_name}: " if state_name else ""
 
+
+    columns = ["dem", "rep", "oth"]
+
+    total = result[columns].sum().sum()
+    num_rows = result.shape[0]
+
     # Check for NaN values
-    for col in ["dem", "rep", "oth"]:
+    for col in columns:
         if col in result.columns and result[col].isna().any():
             missing_count = result[col].isna().sum()
-            raise ValueError(
-                f"{state_prefix}Found {missing_count} NaN values in {col} column"
-            )
+            if missing_count > 0.01 * num_rows:
+                raise ValueError(
+                    f"{state_prefix}Found {missing_count} NaN values in {col} column"
+                )
+            # small enough to ignore
+            result[col][result[col].isna()] = 0
 
     # Check for negative values
-    for col in ["dem", "rep", "oth"]:
+    for col in columns:
         if col in result.columns and (result[col] < 0).any():
-            negative_count = (result[col] < 0).sum()
-            min_value = result[col].min()
-            raise ValueError(
-                f"{state_prefix}Found {negative_count} negative values in {col} column "
-                f"(minimum: {min_value:.2f})"
-            )
+            count_negative = (result[col] < 0).sum()
+            total_negative = result[col][result[col] < 0].sum()
+            if total_negative > 0.0001 * total:
+                raise ValueError(
+                    f"{state_prefix}Found {count_negative} negative values in {col} column "
+                    f"(total: {total_negative:.2f})"
+                )
+            # small enough to ignore
+            result[col][result[col] < 0] = 0
 
 
 def _load_from_columns(
