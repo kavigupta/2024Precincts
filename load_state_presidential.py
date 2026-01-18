@@ -187,7 +187,7 @@ def merge_new_hampshire(gdf, df):
 
 def load_gdf(state_name, state_path):
     # Special handling for Pennsylvania: load GeoJSON directly (it has all the data)
-    if state_name == "Pennsylvania" or state_name == "Michigan":
+    if state_name in ("Pennsylvania", "Michigan", "Massachusetts", "New Jersey", "Tennessee", "Utah"):
         [geojson_file] = list(state_path.glob("*.geojson.gz"))
         with gzip.open(geojson_file, "rb") as f:
             return gpd.read_file(f)

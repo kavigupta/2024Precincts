@@ -76,10 +76,10 @@ STATE_COLUMNS = {
         "total": None,
     },
     "Massachusetts": {
-        "dem": "PresDem",
-        "rep": "PresRep",
+        "dem": "votes_dem",
+        "rep": "votes_rep",
         "oth": None,
-        "total": "PresTot",
+        "total": "votes_total",
     },
     "Michigan": {
         "dem": "votes_dem",
@@ -119,7 +119,7 @@ STATE_COLUMNS = {
         "oth": None,
         "total": "PresTot",
     },
-    "New Jersey": {"dem": "Harris", "rep": "Trump", "oth": "Other", "total": None},
+    "New Jersey": {"dem": "votes_dem", "rep": "votes_rep", "oth": None, "total": "votes_total"},
     "New Mexico": {
         "dem": "NMData24_1",
         "rep": "NMData24_2",
@@ -170,10 +170,10 @@ STATE_COLUMNS = {
         "dem": "votes_dem",
         "rep": "votes_rep",
         "oth": None,
-        "total": "votes_tota",
+        "total": "votes_total",
     },
     "Texas": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Utah": {"dem": "Harris", "rep": "Trump", "oth": None, "total": "Total"},
+    "Utah": {"dem": "votes_dem", "rep": "votes_rep", "oth": None, "total": "votes_total"},
     "Vermont": {"dem": "VTData24_K", "rep": "VTData24_D", "oth": None, "total": "VTData24_T"},
     "Virginia": {
         "dem": "G24PRESD",
