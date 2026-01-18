@@ -20,3 +20,7 @@ Some additional data sources that complement the main state-level data are avail
 
 # Disclaimer
 I can make no guarantees to the accuracy of this data. While I have taken care to ensure the data reflects the true results, it may contain minor errors or omissions due to variations in reporting or processing. Please verify independently before use. I am not liable for any issues arising from the use of this data.
+
+# Discrepancies
+
+There are a few discrepancies with other sources. The only one that leads to a margin difference greater than 0.5% is Maine (0.63%), and the only ones greater than 0.1% are Alaska (0.11%), Massachusetts (0.29%), New Jersey (0.18%), Rhode Island (0.21%), and Vermont (0.30%).
