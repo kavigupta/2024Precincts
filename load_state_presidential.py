@@ -499,6 +499,48 @@ def load_gdf(state_name, state_path):
         # Read the shapefile
         return gpd.read_file(shp_path)
 
+def load_table_with_possible_csv(state_name, state_path):
+    gdf = load_gdf(state_name, state_path)
+    if gdf is None:
+        return None
+
+    # Check for CSV file to merge (e.g., Arizona has AZ24.csv)
+    csv_files = list(state_path.glob("*.csv"))
+    if not csv_files:
+        return gdf
+    # Use the first CSV file found
+    csv_path = csv_files[0]
+    df = pd.read_csv(csv_path)
+    # Try to merge on common key columns
+    # Try common join keys in order of preference
+
+    if state_name == "New Hampshire":
+        return merge_new_hampshire(gdf, df)
+
+    if state_name == "Maine":
+        df["JoinField"] = df["COUNTY"] + "::" + df["TOWN"]
+        gdf["JoinField"] = gdf["COUNTY"] + "::" + gdf["TOWN"]
+    if state_name == "Rhode Island":
+        gdf["JoinField"] = gdf["DISTRICTN"]
+        df["JoinField"] = df["GEOID"]
+    join_keys = ["JoinField", "PCTNUM", "Precinct", "PRECINCT"]
+    for key in join_keys:
+        if key in gdf.columns and key in df.columns:
+            in_gdf = set(gdf[key])
+            in_df = set(df[key])
+            if state_name == "Utah":
+                # these have 0 votes anyway
+                in_df -= {'CACHE: LOG24:U', 'CACHE: SMI01:U2'}
+            if in_gdf == in_df:
+                return gdf.merge(df, on=key, how="left")
+            else:
+                extra_in_gdf = in_gdf - in_df
+                extra_in_df = in_df - in_gdf
+                raise ValueError(f"Common key {key} has different values in gdf and df: {extra_in_gdf} in gdf but not in df, {extra_in_df} in df but not in gdf")
+
+
+    raise ValueError(f"No common key found for {state_name}")
+
 
 def load_state_presidential(state_dir, state_name):
     """
@@ -529,44 +571,7 @@ def load_state_presidential(state_dir, state_name):
     else:
         state_path = Path(state_dir)
 
-    gdf = load_gdf(state_name, state_path)
-    if gdf is None:
-        return None
-
-    # Check for CSV file to merge (e.g., Arizona has AZ24.csv)
-    csv_files = list(state_path.glob("*.csv"))
-    if csv_files:
-        # Use the first CSV file found
-        csv_path = csv_files[0]
-        df = pd.read_csv(csv_path)
-        # Try to merge on common key columns
-        # Try common join keys in order of preference
-        join_keys = ["JoinField", "PCTNUM", "Precinct", "PRECINCT"]
-        merged = False
-        for key in join_keys:
-            if key in gdf.columns and key in df.columns:
-                gdf = gdf.merge(df, on=key, how="left")
-                merged = True
-                break
-
-        if state_name == "New Hampshire":
-            gdf = merge_new_hampshire(gdf, df)
-            merged = True
-
-        if not merged:
-            # If no common key found, try to merge on all common columns
-            common_cols = set(gdf.columns) & set(df.columns)
-            if common_cols:
-                # Use the first common column as join key
-                join_key = list(common_cols)[0]
-                gdf = gdf.merge(df, on=join_key, how="left")
-            # Try state-specific join keys
-            elif (
-                state_name == "Rhode Island"
-                and "DISTRICTN" in gdf.columns
-                and "GEOID" in df.columns
-            ):
-                gdf = gdf.merge(df, left_on="DISTRICTN", right_on="GEOID", how="left")
+    gdf = load_table_with_possible_csv(state_name, state_path)
 
     # Route to state-specific handler or use common case
     if state_name == "Vermont":
