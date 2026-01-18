@@ -159,117 +159,6 @@ def _load_from_columns(
     return result
 
 
-def _load_delaware(gdf):
-    """
-    Delaware-specific loader.
-    Delaware has: DE24Data_D (Dem), DE24Data_K (Kennedy/Other), DE24Data_G (Total)
-    Republican votes = Total - Dem - Kennedy
-    """
-    if (
-        "DE24Data_D" not in gdf.columns
-        or "DE24Data_K" not in gdf.columns
-        or "DE24Data_G" not in gdf.columns
-    ):
-        raise ValueError(
-            f"Delaware data missing required columns. Available: {list(gdf.columns)}"
-        )
-
-    result = gpd.GeoDataFrame()
-    result["STATE"] = "Delaware"
-    result["STATE_ABBR"] = "DE"
-    result["geometry"] = gdf.geometry
-    result.crs = gdf.crs
-
-    # Extract data
-    dem = pd.to_numeric(gdf["DE24Data_D"], errors="raise")
-    kennedy = pd.to_numeric(gdf["DE24Data_K"], errors="raise")
-    total = pd.to_numeric(gdf["DE24Data_G"], errors="raise")
-
-    # Calculate Republican votes
-    result["dem"] = dem
-    result["rep"] = total - dem - kennedy
-    result["oth"] = kennedy
-
-    # Validate at the end
-    _validate_result(result, "Delaware")
-
-    return result
-
-
-def _load_oklahoma(gdf):
-    """
-    Oklahoma-specific loader.
-    Oklahoma has: OK24Data_H (Harris/Dem), OK24Data_T (Trump/Rep), OK24Data_G (Total)
-    Other votes = Total - Dem - Rep
-    """
-    if (
-        "OK24Data_H" not in gdf.columns
-        or "OK24Data_T" not in gdf.columns
-        or "OK24Data_G" not in gdf.columns
-    ):
-        raise ValueError(
-            f"Oklahoma data missing required columns. Available: {list(gdf.columns)}"
-        )
-
-    result = gpd.GeoDataFrame()
-    result["STATE"] = "Oklahoma"
-    result["STATE_ABBR"] = "OK"
-    result["geometry"] = gdf.geometry
-    result.crs = gdf.crs
-
-    # Extract data
-    dem = pd.to_numeric(gdf["OK24Data_H"], errors="raise")
-    rep = pd.to_numeric(gdf["OK24Data_T"], errors="raise")
-    total = pd.to_numeric(gdf["OK24Data_G"], errors="raise")
-
-    # Calculate Other votes
-    result["dem"] = dem
-    result["rep"] = rep
-    result["oth"] = total - dem - rep
-
-    # Validate at the end
-    _validate_result(result, "Oklahoma")
-
-    return result
-
-
-def _load_vermont(gdf):
-    """
-    Vermont-specific loader.
-    Vermont has: VTData24_D (Dem), VTData24_K (Kennedy/Other), VTData24_T (Total)
-    Republican votes = Total - Dem - Kennedy
-    """
-    if (
-        "VTData24_D" not in gdf.columns
-        or "VTData24_K" not in gdf.columns
-        or "VTData24_T" not in gdf.columns
-    ):
-        raise ValueError(
-            f"Vermont data missing required columns. Available: {list(gdf.columns)}"
-        )
-
-    result = gpd.GeoDataFrame()
-    result["STATE"] = "Vermont"
-    result["STATE_ABBR"] = "VT"
-    result["geometry"] = gdf.geometry
-    result.crs = gdf.crs
-
-    # Extract data
-    dem = pd.to_numeric(gdf["VTData24_D"], errors="raise")
-    kennedy = pd.to_numeric(gdf["VTData24_K"], errors="raise")
-    total = pd.to_numeric(gdf["VTData24_T"], errors="raise")
-
-    # Calculate Republican votes
-    result["dem"] = dem
-    result["rep"] = total - dem - kennedy
-    result["oth"] = kennedy
-
-    # Validate at the end
-    _validate_result(result, "Vermont")
-
-    return result
-
-
 def merge_new_hampshire(gdf, df):
     """
     Merge New Hampshire shapefile with CSV data.
@@ -306,6 +195,7 @@ STATE_COLUMNS = {
         "oth": None,
         "total": "PresTot",
     },
+    "Delaware": {"dem": "DE24Data_K", "rep": "DE24Data_D", "oth": None, "total": "DE24Data_G"},
     "District of Columbia": {
         "dem": "DC24Data_D",
         "rep": "DC24Data_R",
@@ -423,6 +313,7 @@ STATE_COLUMNS = {
         "oth": None,
         "total": "PresTot",
     },
+    "Oklahoma": {"dem": "OK24Data_H", "rep": "OK24Data_T", "oth": None, "total": "OK24Data_G"},
     "Ohio": {
         "dem": "PresDem",
         "rep": "PresRep",
@@ -457,6 +348,7 @@ STATE_COLUMNS = {
     },
     "Texas": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
     "Utah": {"dem": "Harris", "rep": "Trump", "oth": None, "total": "Total"},
+    "Vermont": {"dem": "VTData24_K", "rep": "VTData24_D", "oth": None, "total": "VTData24_T"},
     "Virginia": {
         "dem": "G24PRESD",
         "rep": "G24PRESR",
@@ -574,34 +466,24 @@ def load_state_presidential(state_dir, state_name):
     gdf = load_table_with_possible_csv(state_name, state_path)
 
     # Route to state-specific handler or use common case
-    if state_name == "Vermont":
-        result = _load_vermont(gdf)
-    elif state_name == "Delaware":
-        result = _load_delaware(gdf)
-    elif state_name == "Oklahoma":
-        result = _load_oklahoma(gdf)
-    elif state_name in STATE_COLUMNS:
-        cols = STATE_COLUMNS[state_name]
-        # Validate that if oth is None, total must be provided
-        if cols["oth"] is None and cols["total"] is None:
-            raise ValueError(
-                f"State '{state_name}' configuration error: "
-                f"must provide either 'oth' or 'total' column. "
-                f"Available columns: {list(gdf.columns)}"
-            )
-        result = _load_from_columns(
-            gdf,
-            dem_col=cols["dem"],
-            rep_col=cols["rep"],
-            oth_col=cols["oth"],
-            total_col=cols["total"],
-            state_name=state_name,
-        )
-    else:
+    assert state_name in STATE_COLUMNS, f"State {state_name} not found in STATE_COLUMNS"
+
+    cols = STATE_COLUMNS[state_name]
+    # Validate that if oth is None, total must be provided
+    if cols["oth"] is None and cols["total"] is None:
         raise ValueError(
-            f"No handler configured for state '{state_name}'. "
+            f"State '{state_name}' configuration error: "
+            f"must provide either 'oth' or 'total' column. "
             f"Available columns: {list(gdf.columns)}"
         )
+    result = _load_from_columns(
+        gdf,
+        dem_col=cols["dem"],
+        rep_col=cols["rep"],
+        oth_col=cols["oth"],
+        total_col=cols["total"],
+        state_name=state_name,
+    )
 
     return result
 
