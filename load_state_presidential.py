@@ -3,6 +3,7 @@
 Function to load a state's presidential results and standardize to dem/rep/oth columns.
 """
 
+import gzip
 import zipfile
 import tempfile
 import geopandas as gpd
@@ -582,7 +583,7 @@ STATE_COLUMNS = {
     },
     "Montana": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
     "Nebraska": {"dem": "PresDem", "rep": "PresRep", "oth": "PresOth", "total": None},
-    "Nevada": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
+    "Nevada": {"dem": "NVData24_1", "rep": "NVData24_2", "oth": None, "total": "NVData24_3"},
     "New Hampshire": {
         "dem": "PresDem",
         "rep": "PresRep",
@@ -617,11 +618,11 @@ STATE_COLUMNS = {
     },  # Has NaN - will error correctly
     "Oregon": {"dem": "USP24D", "rep": "USP24R", "oth": None, "total": "USP24Tot"},
     "Pennsylvania": {
-        "dem": "PresDem",
-        "rep": "PresRep",
+        "dem": "votes_dem",
+        "rep": "votes_rep",
         "oth": None,
-        "total": "PresTot",
-    },  # Data not available per README
+        "total": "votes_total",
+    },
     "Rhode Island": {
         "dem": "PresDem",
         "rep": "PresRep",
@@ -665,6 +666,25 @@ STATE_COLUMNS = {
     "Wyoming": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
 }
 
+def load_gdf(state_name, state_path):
+
+    # Special handling for Pennsylvania: load GeoJSON directly (it has all the data)
+    if state_name == "Pennsylvania":
+        [geojson_file] = list(state_path.glob("*.geojson.gz"))
+        with gzip.open(geojson_file, "rb") as f:
+            return gpd.read_file(f)
+
+    # Find zip files in the state directory
+    [zip_file] = list(state_path.glob("*.zip"))
+    # Create temporary directory for extraction
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Extract and find shapefile
+        shp_path = find_shapefile_in_zip(zip_file, temp_dir)
+        if not shp_path:
+            return None
+
+        # Read the shapefile
+        return gpd.read_file(shp_path)
 
 def load_state_presidential(state_dir, state_name):
     """
@@ -694,114 +714,83 @@ def load_state_presidential(state_dir, state_name):
         state_path = additional_data_path
     else:
         state_path = Path(state_dir)
+    
+    gdf = load_gdf(state_name, state_path)
+    if gdf is None:
+        return None
 
-    # Find zip files in the state directory
-    zip_files = list(state_path.glob("*.zip"))
-    if not zip_files:
-        # If no zip in additional_data, fall back to original state_dir
-        if state_path == additional_data_path:
-            state_path = Path(state_dir)
-            zip_files = list(state_path.glob("*.zip"))
-        if not zip_files:
-            return None
+    # Check for CSV file to merge (e.g., Arizona has AZ24.csv)
+    csv_files = list(state_path.glob("*.csv"))
+    if csv_files:
+        # Use the first CSV file found
+        csv_path = csv_files[0]
+        df = pd.read_csv(csv_path)
+        # Try to merge on common key columns
+        # Try common join keys in order of preference
+        join_keys = ["JoinField", "PCTNUM", "Precinct", "PRECINCT"]
+        merged = False
+        for key in join_keys:
+            if key in gdf.columns and key in df.columns:
+                gdf = gdf.merge(df, on=key, how="left")
+                merged = True
+                break
 
-    # Use the first zip file found
-    zip_path = zip_files[0]
+        if state_name == "New Hampshire":
+            gdf = merge_new_hampshire(gdf, df)
+            merged = True
 
-    # Create temporary directory for extraction
-    with tempfile.TemporaryDirectory() as temp_dir:
-        try:
-            # Extract and find shapefile
-            shp_path = find_shapefile_in_zip(zip_path, temp_dir)
-            if not shp_path:
-                return None
+        if state_name == "Michigan":
+            gdf = _load_michigan(gdf, state_path)
+            merged = True
 
-            # Read the shapefile
-            gdf = gpd.read_file(shp_path)
-
-            # Check for CSV file to merge (e.g., Arizona has AZ24.csv)
-            csv_files = list(state_path.glob("*.csv"))
-            if csv_files:
-                # Use the first CSV file found
-                csv_path = csv_files[0]
-                df = pd.read_csv(csv_path)
-                # Try to merge on common key columns
-                # Try common join keys in order of preference
-                join_keys = ["JoinField", "PCTNUM", "Precinct", "PRECINCT"]
-                merged = False
-                for key in join_keys:
-                    if key in gdf.columns and key in df.columns:
-                        gdf = gdf.merge(df, on=key, how="left")
-                        merged = True
-                        break
-
-                if state_name == "New Hampshire":
-                    gdf = merge_new_hampshire(gdf, df)
-                    merged = True
-
-                if state_name == "Michigan":
-                    gdf = _load_michigan(gdf, state_path)
-                    merged = True
-
-                if not merged:
-                    # If no common key found, try to merge on all common columns
-                    common_cols = set(gdf.columns) & set(df.columns)
-                    if common_cols:
-                        # Use the first common column as join key
-                        join_key = list(common_cols)[0]
-                        gdf = gdf.merge(df, on=join_key, how="left")
-                    # Try state-specific join keys
-                    elif (
-                        state_name == "Rhode Island"
-                        and "DISTRICTN" in gdf.columns
-                        and "GEOID" in df.columns
-                    ):
-                        gdf = gdf.merge(
-                            df, left_on="DISTRICTN", right_on="GEOID", how="left"
-                        )
-                    elif state_name == "Nevada" and "JoinField" in df.columns:
-                        # Nevada: CSV has JoinField but shapefile doesn't - cannot merge without proper key
-                        raise ValueError(
-                            f"Nevada: Cannot merge CSV with shapefile - no matching keys found. "
-                            f"CSV has JoinField but shapefile doesn't have matching column."
-                        )
-
-            # Route to state-specific handler or use common case
-            if state_name == "Vermont":
-                result = _load_vermont(gdf)
-            elif state_name == "Delaware":
-                result = _load_delaware(gdf)
-            elif state_name == "Oklahoma":
-                result = _load_oklahoma(gdf)
-            elif state_name in STATE_COLUMNS:
-                cols = STATE_COLUMNS[state_name]
-                # Validate that if oth is None, total must be provided
-                if cols["oth"] is None and cols["total"] is None:
-                    raise ValueError(
-                        f"State '{state_name}' configuration error: "
-                        f"must provide either 'oth' or 'total' column. "
-                        f"Available columns: {list(gdf.columns)}"
-                    )
-                result = _load_from_columns(
-                    gdf,
-                    dem_col=cols["dem"],
-                    rep_col=cols["rep"],
-                    oth_col=cols["oth"],
-                    total_col=cols["total"],
-                    state_name=state_name,
-                )
-            else:
-                raise ValueError(
-                    f"No handler configured for state '{state_name}'. "
-                    f"Available columns: {list(gdf.columns)}"
+        if not merged:
+            # If no common key found, try to merge on all common columns
+            common_cols = set(gdf.columns) & set(df.columns)
+            if common_cols:
+                # Use the first common column as join key
+                join_key = list(common_cols)[0]
+                gdf = gdf.merge(df, on=join_key, how="left")
+            # Try state-specific join keys
+            elif (
+                state_name == "Rhode Island"
+                and "DISTRICTN" in gdf.columns
+                and "GEOID" in df.columns
+            ):
+                gdf = gdf.merge(
+                    df, left_on="DISTRICTN", right_on="GEOID", how="left"
                 )
 
-            return result
+    # Route to state-specific handler or use common case
+    if state_name == "Vermont":
+        result = _load_vermont(gdf)
+    elif state_name == "Delaware":
+        result = _load_delaware(gdf)
+    elif state_name == "Oklahoma":
+        result = _load_oklahoma(gdf)
+    elif state_name in STATE_COLUMNS:
+        cols = STATE_COLUMNS[state_name]
+        # Validate that if oth is None, total must be provided
+        if cols["oth"] is None and cols["total"] is None:
+            raise ValueError(
+                f"State '{state_name}' configuration error: "
+                f"must provide either 'oth' or 'total' column. "
+                f"Available columns: {list(gdf.columns)}"
+            )
+        result = _load_from_columns(
+            gdf,
+            dem_col=cols["dem"],
+            rep_col=cols["rep"],
+            oth_col=cols["oth"],
+            total_col=cols["total"],
+            state_name=state_name,
+        )
+    else:
+        raise ValueError(
+            f"No handler configured for state '{state_name}'. "
+            f"Available columns: {list(gdf.columns)}"
+        )
 
-        except Exception as e:
-            print(f"  {state_name}: Error - {str(e)}")
-            return None
-
+    return result
 
 def test_all_states(project_root):
     """Test loading all states and report which ones work."""
@@ -822,7 +811,13 @@ def test_all_states(project_root):
         state_name = state_dir.name
         print(f"Testing {state_name}...", end=" ")
 
-        gdf = load_state_presidential(state_dir, state_name)
+        try:
+            gdf = load_state_presidential(state_dir, state_name)
+        except Exception as e:
+            print(f"✗ Failed to load: {e}")
+            failed.append(state_name)
+            continue
+
 
         if gdf is not None and len(gdf) > 0:
             # Check that we have dem or rep data
