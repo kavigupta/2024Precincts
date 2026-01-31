@@ -12,7 +12,12 @@ STATE_COLUMNS = {
     "Alaska": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
     "Arizona": {"dem": "Harris", "rep": "Trump", "oth": None, "total": "PresTot"},
     "Arkansas": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "California": {"dem": "G24PDem", "rep": "G24PRep", "oth": "G24POth", "total": None},
+    "California": {
+        "dem": "votes_dem",
+        "rep": "votes_rep",
+        "oth": None,
+        "total": "votes_total",
+    },
     "Colorado": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
     "Connecticut": {
         "dem": "PresDem",
