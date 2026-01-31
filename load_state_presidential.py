@@ -11,6 +11,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+from shapely.ops import orient
 
 from columns import STATE_COLUMNS
 
@@ -364,6 +365,17 @@ def load_all_states(project_root):
     return successful, failed
 
 
+def fix_winding_order(geom):
+    """
+    Fix polygon winding order: exterior rings counter-clockwise, interior rings clockwise.
+    Uses shapely's orient function which ensures proper winding order.
+    """
+    if geom is None or geom.is_empty:
+        return geom
+    # orient(geom, sign=1.0) ensures exterior rings are counter-clockwise
+    return orient(geom, sign=1.0)
+
+
 def merge_shapefiles(project_root):
     successful, failed = load_all_states(project_root)
     assert not failed, "Failed to load some states"
@@ -375,6 +387,11 @@ def merge_shapefiles(project_root):
         gdf["precinct_no"] = gdf.index
         frames.append(gdf)
     gdf = pd.concat(frames)
+
+    # Fix winding order for all geometries before writing
+    print("Fixing polygon winding order...")
+    gdf["geometry"] = gdf["geometry"].apply(fix_winding_order)
+
     return gdf
 
 
