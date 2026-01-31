@@ -1,4 +1,3 @@
-
 # State-specific column mappings for common case
 # Format: {'dem': col, 'rep': col, 'oth': col or list or None, 'total': col or None}
 # If oth is None, total must be provided to calculate oth = total - dem - rep
@@ -21,7 +20,12 @@ STATE_COLUMNS = {
         "oth": None,
         "total": "PresTot",
     },
-    "Delaware": {"dem": "DE24Data_K", "rep": "DE24Data_D", "oth": None, "total": "DE24Data_G"},
+    "Delaware": {
+        "dem": "DE24Data_K",
+        "rep": "DE24Data_D",
+        "oth": None,
+        "total": "DE24Data_G",
+    },
     "District of Columbia": {
         "dem": "DC24Data_D",
         "rep": "DC24Data_R",
@@ -119,7 +123,12 @@ STATE_COLUMNS = {
         "oth": None,
         "total": "PresTot",
     },
-    "New Jersey": {"dem": "votes_dem", "rep": "votes_rep", "oth": None, "total": "votes_total"},
+    "New Jersey": {
+        "dem": "votes_dem",
+        "rep": "votes_rep",
+        "oth": None,
+        "total": "votes_total",
+    },
     "New Mexico": {
         "dem": "NMData24_1",
         "rep": "NMData24_2",
@@ -139,7 +148,12 @@ STATE_COLUMNS = {
         "oth": None,
         "total": "PresTot",
     },
-    "Oklahoma": {"dem": "OK24Data_H", "rep": "OK24Data_T", "oth": None, "total": "OK24Data_G"},
+    "Oklahoma": {
+        "dem": "OK24Data_H",
+        "rep": "OK24Data_T",
+        "oth": None,
+        "total": "OK24Data_G",
+    },
     "Ohio": {
         "dem": "PresDem",
         "rep": "PresRep",
@@ -173,8 +187,18 @@ STATE_COLUMNS = {
         "total": "votes_total",
     },
     "Texas": {"dem": "PresDem", "rep": "PresRep", "oth": None, "total": "PresTot"},
-    "Utah": {"dem": "votes_dem", "rep": "votes_rep", "oth": None, "total": "votes_total"},
-    "Vermont": {"dem": "VTData24_K", "rep": "VTData24_D", "oth": None, "total": "VTData24_T"},
+    "Utah": {
+        "dem": "votes_dem",
+        "rep": "votes_rep",
+        "oth": None,
+        "total": "votes_total",
+    },
+    "Vermont": {
+        "dem": "VTData24_K",
+        "rep": "VTData24_D",
+        "oth": None,
+        "total": "VTData24_T",
+    },
     "Virginia": {
         "dem": "G24PRESD",
         "rep": "G24PRESR",

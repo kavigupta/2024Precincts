@@ -3,13 +3,14 @@
 Function to load a state's presidential results and standardize to dem/rep/oth columns.
 """
 
-import os
 import gzip
-import zipfile
+import os
 import tempfile
+import zipfile
+from pathlib import Path
+
 import geopandas as gpd
 import pandas as pd
-from pathlib import Path
 
 from columns import STATE_COLUMNS
 
@@ -42,7 +43,6 @@ def _validate_result(result, state_name=None):
     ValueError: If any column contains NaN or negative values
     """
     state_prefix = f"{state_name}: " if state_name else ""
-
 
     columns = ["dem", "rep", "oth"]
 
@@ -187,7 +187,14 @@ def merge_new_hampshire(gdf, df):
 
 def load_gdf(state_name, state_path):
     # Special handling for Pennsylvania: load GeoJSON directly (it has all the data)
-    if state_name in ("Pennsylvania", "Michigan", "Massachusetts", "New Jersey", "Tennessee", "Utah"):
+    if state_name in (
+        "Pennsylvania",
+        "Michigan",
+        "Massachusetts",
+        "New Jersey",
+        "Tennessee",
+        "Utah",
+    ):
         [geojson_file] = list(state_path.glob("*.geojson.gz"))
         with gzip.open(geojson_file, "rb") as f:
             return gpd.read_file(f)
@@ -203,6 +210,7 @@ def load_gdf(state_name, state_path):
 
         # Read the shapefile
         return gpd.read_file(shp_path)
+
 
 def load_table_with_possible_csv(state_name, state_path):
     gdf = load_gdf(state_name, state_path)
@@ -235,14 +243,15 @@ def load_table_with_possible_csv(state_name, state_path):
             in_df = set(df[key])
             if state_name == "Utah":
                 # these have 0 votes anyway
-                in_df -= {'CACHE: LOG24:U', 'CACHE: SMI01:U2'}
+                in_df -= {"CACHE: LOG24:U", "CACHE: SMI01:U2"}
             if in_gdf == in_df:
                 return gdf.merge(df, on=key, how="left")
             else:
                 extra_in_gdf = in_gdf - in_df
                 extra_in_df = in_df - in_gdf
-                raise ValueError(f"Common key {key} has different values in gdf and df: {extra_in_gdf} in gdf but not in df, {extra_in_df} in df but not in gdf")
-
+                raise ValueError(
+                    f"Common key {key} has different values in gdf and df: {extra_in_gdf} in gdf but not in df, {extra_in_df} in df but not in gdf"
+                )
 
     raise ValueError(f"No common key found for {state_name}")
 
@@ -354,6 +363,7 @@ def load_all_states(project_root):
 
     return successful, failed
 
+
 def merge_shapefiles(project_root):
     successful, failed = load_all_states(project_root)
     assert not failed, "Failed to load some states"
@@ -366,6 +376,7 @@ def merge_shapefiles(project_root):
         frames.append(gdf)
     gdf = pd.concat(frames)
     return gdf
+
 
 if __name__ == "__main__":
     project_root = Path(__file__).parent
